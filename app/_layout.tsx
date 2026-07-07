@@ -152,6 +152,7 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
   
   // Track the previous user ID to detect user changes
   const previousUserIdRef = useRef<string | null>(null);
+  const migrationAttemptedForUserRef = useRef<string | null>(null);
 
   // Use useLayoutEffect to set token getter BEFORE children render/effects run
   // This ensures token is available before any API calls
@@ -191,6 +192,37 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
     // Update the ref for next comparison
     previousUserIdRef.current = currentUserId;
   }, [user?.id, isLoaded]);
+
+  // During the Clerk production cutover, the API can migrate legacy data from
+  // the old Clerk development user ID to the new production user ID. This call
+  // is safe and idempotent; it no-ops when migration is disabled or already done.
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    if (!isSignedIn || !user?.id) {
+      migrationAttemptedForUserRef.current = null;
+      return;
+    }
+
+    if (migrationAttemptedForUserRef.current === user.id) return;
+    migrationAttemptedForUserRef.current = user.id;
+
+    api.migrateLegacyAccount()
+      .then((result) => {
+        if (result.migrated) {
+          queryClient.clear();
+          addBreadcrumb('auth', 'Legacy account data migrated', {
+            status: result.status,
+            rowsUpdated: result.rows_updated,
+          });
+        }
+      })
+      .catch(() => {
+        // Do not block sign-in if the migration bridge is unavailable. The API
+        // will remain idempotent, so a future app session can try again.
+        addBreadcrumb('auth', 'Legacy account migration check failed');
+      });
+  }, [isLoaded, isSignedIn, user?.id]);
 
   // Sync user context with Sentry
   useEffect(() => {

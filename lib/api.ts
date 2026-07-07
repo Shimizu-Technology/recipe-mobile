@@ -1118,6 +1118,18 @@ class ApiClient {
   // User Account
   // ============================================================
 
+  async migrateLegacyAccount(): Promise<{
+    status: string;
+    migrated: boolean;
+    legacy_user_id?: string | null;
+    new_user_id?: string | null;
+    rows_updated?: Record<string, number>;
+    reason?: string | null;
+  }> {
+    const { data } = await this.client.post('/api/users/me/migrate-legacy');
+    return data;
+  }
+
   async deleteAccount(): Promise<{ message: string; clerk_deleted?: boolean }> {
     const { data } = await this.client.delete('/api/users/me');
     return data;
