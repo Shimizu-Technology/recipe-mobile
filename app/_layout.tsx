@@ -15,7 +15,7 @@ import {
 } from '@expo-google-fonts/fraunces';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import 'react-native-reanimated';
 import { ShareIntentProvider } from 'expo-share-intent';
@@ -31,7 +31,7 @@ import { AppLoadingSkeleton } from '@/components/Skeleton';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { FloatingTimerOverlay } from '@/components/FloatingTimerOverlay';
 import FloatingChatButton from '@/components/FloatingChatButton';
-import { initSentry, setSentryUser, addBreadcrumb, withSentry } from '@/lib/sentry';
+import { initSentry, setSentryUser, addBreadcrumb, captureError, withSentry } from '@/lib/sentry';
 import { useHandleShareIntent } from '@/hooks/useShareIntent';
 
 // Initialize Sentry as early as possible
@@ -153,6 +153,8 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
   // Track the previous user ID to detect user changes
   const previousUserIdRef = useRef<string | null>(null);
   const migrationAttemptedForUserRef = useRef<string | null>(null);
+  const migrationRetryCountRef = useRef<Record<string, number>>({});
+  const [migrationRetryNonce, setMigrationRetryNonce] = useState(0);
 
   // Use useLayoutEffect to set token getter BEFORE children render/effects run
   // This ensures token is available before any API calls
@@ -207,8 +209,15 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
     if (migrationAttemptedForUserRef.current === user.id) return;
     migrationAttemptedForUserRef.current = user.id;
 
+    let isCancelled = false;
+    let retryTimeout: ReturnType<typeof setTimeout> | undefined;
+
     api.migrateLegacyAccount()
       .then((result) => {
+        if (isCancelled) return;
+
+        delete migrationRetryCountRef.current[user.id];
+
         if (result.migrated) {
           queryClient.clear();
           addBreadcrumb('auth', 'Legacy account data migrated', {
@@ -217,12 +226,41 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
           });
         }
       })
-      .catch(() => {
-        // Do not block sign-in if the migration bridge is unavailable. The API
-        // will remain idempotent, so a future app session can try again.
-        addBreadcrumb('auth', 'Legacy account migration check failed');
+      .catch((error) => {
+        if (isCancelled) return;
+
+        // Do not block sign-in if the migration bridge is unavailable. Reset the
+        // guard and retry a few times for transient network/token timing issues.
+        migrationAttemptedForUserRef.current = null;
+
+        const retryCount = migrationRetryCountRef.current[user.id] ?? 0;
+        const shouldRetry = retryCount < 3;
+        if (shouldRetry) {
+          migrationRetryCountRef.current[user.id] = retryCount + 1;
+          retryTimeout = setTimeout(() => {
+            setMigrationRetryNonce((nonce) => nonce + 1);
+          }, Math.min(30000, 1000 * 2 ** retryCount));
+        }
+
+        addBreadcrumb(
+          'auth',
+          'Legacy account migration check failed',
+          { retryCount, willRetry: shouldRetry },
+          'warning'
+        );
+        captureError(error instanceof Error ? error : new Error('Legacy account migration check failed'), {
+          tags: { area: 'auth', action: 'legacy-account-migration' },
+          extra: { retryCount, willRetry: shouldRetry },
+        });
       });
-  }, [isLoaded, isSignedIn, user?.id]);
+
+    return () => {
+      isCancelled = true;
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+    };
+  }, [isLoaded, isSignedIn, user?.id, migrationRetryNonce]);
 
   // Sync user context with Sentry
   useEffect(() => {
