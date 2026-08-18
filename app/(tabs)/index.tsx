@@ -42,7 +42,7 @@ export default function ExtractScreen() {
   const [url, setUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('Guam');
-  const [isPublic, setIsPublic] = useState(true);
+  const [isPublic, setIsPublic] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [isOcrExtracting, setIsOcrExtracting] = useState(false);
   const [ocrProgress, setOcrProgress] = useState('');
@@ -194,7 +194,7 @@ export default function ExtractScreen() {
         extraction.reset();
         setUrl('');
         setNotes('');
-        setIsPublic(true);
+        setIsPublic(false);
         setExtractingAsWebsite(false);
       };
 
@@ -244,7 +244,7 @@ export default function ExtractScreen() {
         router.push(`/recipe/${result.recipeId}`);
         setUrl('');
         setNotes('');
-        setIsPublic(true);  // Reset to default
+        setIsPublic(false);  // New extractions are private by default
       }
       // Otherwise, polling has started and progress UI will show
     } catch (error: any) {
@@ -665,6 +665,10 @@ export default function ExtractScreen() {
             onPress={() => !isLoading && setIsPublic(!isPublic)}
             activeOpacity={0.7}
             disabled={isLoading}
+            accessibilityRole="switch"
+            accessibilityLabel="Share recipe to the public library"
+            accessibilityHint="Off keeps this recipe visible only to you"
+            accessibilityState={{ checked: isPublic, disabled: isLoading }}
           >
             <RNView style={styles.shareToggleContent}>
               <Ionicons
@@ -685,6 +689,7 @@ export default function ExtractScreen() {
               value={isPublic}
               onValueChange={setIsPublic}
               disabled={isLoading}
+              accessibilityLabel="Share recipe to the public library"
               trackColor={{ false: colors.border, true: colors.tint }}
               thumbColor="#FFFFFF"
             />
