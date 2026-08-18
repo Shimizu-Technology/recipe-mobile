@@ -15,6 +15,9 @@
       "distribution": "internal",
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://recipe-api-x5na.onrender.com"
       }
     },
     "android-debug": {
@@ -24,12 +27,14 @@
         "gradleCommand": ":app:assembleRelease"
       },
       "env": {
+        "EXPO_PUBLIC_API_URL": "https://recipe-api-x5na.onrender.com",
         "SENTRY_ALLOW_FAILURE": "true"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
+        "EXPO_PUBLIC_API_URL": "https://recipe-api-x5na.onrender.com",
         "SENTRY_ALLOW_FAILURE": "true",
         "USE_CCACHE": "0",
         "CCACHE_DISABLE": "1"
@@ -50,4 +55,3 @@
     }
   }
 }
-

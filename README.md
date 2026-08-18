@@ -14,12 +14,14 @@ npm install
 cp .env.example .env
 # Add your Clerk key
 
+# Optional local override when Expo cannot infer your machine IP
+# EXPO_PUBLIC_API_URL=http://192.168.1.100:8000
+
 # Start Expo dev server
 npx expo start
 
 # Checks
-npm run typecheck
-npm run doctor
+npm run gate
 ```
 
 Scan QR with Expo Go, or press `i` for iOS simulator.
@@ -38,14 +40,9 @@ For production builds, set these in **Expo Dashboard → Environment variables**
 
 ## API Configuration
 
-Edit `lib/api.ts`:
-
-```typescript
-const USE_LOCAL_API = true;  // false for production
-```
-
-- **Development:** Auto-detects your machine's IP
-- **Production:** Uses `https://recipe-api-x5na.onrender.com`
+- **Development:** Auto-detects your machine's IP or uses `EXPO_PUBLIC_API_URL`.
+- **Preview/production:** Uses the explicit `EXPO_PUBLIC_API_URL` configured by its EAS profile.
+- Development fails with a configuration error instead of silently contacting production.
 
 ## Features
 
@@ -171,4 +168,3 @@ eas submit --platform android --latest
 ## License
 
 Private - Shimizu Technology
-

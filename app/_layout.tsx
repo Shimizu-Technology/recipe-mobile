@@ -15,7 +15,7 @@ import {
 } from '@expo-google-fonts/fraunces';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import 'react-native-reanimated';
 import { ShareIntentProvider } from 'expo-share-intent';
@@ -31,7 +31,7 @@ import { AppLoadingSkeleton } from '@/components/Skeleton';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { FloatingTimerOverlay } from '@/components/FloatingTimerOverlay';
 import FloatingChatButton from '@/components/FloatingChatButton';
-import { initSentry, setSentryUser, addBreadcrumb, withSentry } from '@/lib/sentry';
+import { initSentry, setSentryUser, addBreadcrumb, captureError, withSentry } from '@/lib/sentry';
 import { useHandleShareIntent } from '@/hooks/useShareIntent';
 
 // Initialize Sentry as early as possible
@@ -150,8 +150,12 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
   const { getToken, isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
   
-  // Track the previous user ID to detect user changes
-  const previousUserIdRef = useRef<string | null>(null);
+  // `undefined` means auth has not completed its first load yet. Once loaded,
+  // `null` is a real signed-out subject and must participate in transitions.
+  const previousUserIdRef = useRef<string | null | undefined>(undefined);
+  const migrationAttemptedForUserRef = useRef<string | null>(null);
+  const migrationRetryCountRef = useRef<Record<string, number>>({});
+  const [migrationRetryNonce, setMigrationRetryNonce] = useState(0);
 
   // Use useLayoutEffect to set token getter BEFORE children render/effects run
   // This ensures token is available before any API calls
@@ -178,19 +182,89 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
     const currentUserId = user?.id ?? null;
     const previousUserId = previousUserIdRef.current;
     
-    // If user changed (including sign out -> sign in as different user)
-    if (previousUserId !== null && currentUserId !== null && previousUserId !== currentUserId) {
-      console.log('User changed, clearing cached data');
+    // Skip the first resolved auth state; a new QueryClient has no prior
+    // account data. Every later subject transition (A -> signed out, signed
+    // out -> B, or A -> B) cancels requests and clears private cache data.
+    if (previousUserId !== undefined && previousUserId !== currentUserId) {
+      void queryClient.cancelQueries();
       queryClient.clear();
       addBreadcrumb('auth', 'Query cache cleared due to user change', {
-        previousUserId,
-        newUserId: currentUserId,
+        wasAuthenticated: previousUserId !== null,
+        isAuthenticated: currentUserId !== null,
+        accountChanged: previousUserId !== null && currentUserId !== null,
       });
     }
     
     // Update the ref for next comparison
     previousUserIdRef.current = currentUserId;
   }, [user?.id, isLoaded]);
+
+  // During the Clerk production cutover, the API can migrate legacy data from
+  // the old Clerk development user ID to the new production user ID. This call
+  // is safe and idempotent; it no-ops when migration is disabled or already done.
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    if (!isSignedIn || !user?.id) {
+      migrationAttemptedForUserRef.current = null;
+      return;
+    }
+
+    if (migrationAttemptedForUserRef.current === user.id) return;
+    migrationAttemptedForUserRef.current = user.id;
+
+    let isCancelled = false;
+    let retryTimeout: ReturnType<typeof setTimeout> | undefined;
+
+    api.migrateLegacyAccount()
+      .then((result) => {
+        if (isCancelled) return;
+
+        delete migrationRetryCountRef.current[user.id];
+
+        if (result.migrated) {
+          queryClient.clear();
+          addBreadcrumb('auth', 'Legacy account data migrated', {
+            status: result.status,
+            rowsUpdated: result.rows_updated,
+          });
+        }
+      })
+      .catch((error) => {
+        if (isCancelled) return;
+
+        // Do not block sign-in if the migration bridge is unavailable. Reset the
+        // guard and retry a few times for transient network/token timing issues.
+        migrationAttemptedForUserRef.current = null;
+
+        const retryCount = migrationRetryCountRef.current[user.id] ?? 0;
+        const shouldRetry = retryCount < 3;
+        if (shouldRetry) {
+          migrationRetryCountRef.current[user.id] = retryCount + 1;
+          retryTimeout = setTimeout(() => {
+            setMigrationRetryNonce((nonce) => nonce + 1);
+          }, Math.min(30000, 1000 * 2 ** retryCount));
+        }
+
+        addBreadcrumb(
+          'auth',
+          'Legacy account migration check failed',
+          { retryCount, willRetry: shouldRetry },
+          'warning'
+        );
+        captureError(error instanceof Error ? error : new Error('Legacy account migration check failed'), {
+          tags: { area: 'auth', action: 'legacy-account-migration' },
+          extra: { retryCount, willRetry: shouldRetry },
+        });
+      });
+
+    return () => {
+      isCancelled = true;
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+    };
+  }, [isLoaded, isSignedIn, user?.id, migrationRetryNonce]);
 
   // Sync user context with Sentry
   useEffect(() => {
