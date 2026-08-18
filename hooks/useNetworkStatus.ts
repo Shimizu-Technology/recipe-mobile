@@ -7,27 +7,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
-import Constants from 'expo-constants';
-
-// API base URL - same logic as api.ts
-const USE_LOCAL_API = true;
-
-function getApiBaseUrl(): string {
-  if (!__DEV__ || !USE_LOCAL_API) {
-    return 'https://recipe-api-x5na.onrender.com';
-  }
-  
-  const debuggerHost = Constants.expoConfig?.hostUri || (Constants.manifest as any)?.debuggerHost;
-  
-  if (debuggerHost) {
-    const host = debuggerHost.split(':')[0];
-    return `http://${host}:8000`;
-  }
-  
-  return 'https://recipe-api-x5na.onrender.com';
-}
-
-const API_URL = getApiBaseUrl();
+import { API_BASE_URL } from '../lib/apiConfig';
 const HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
 const HEALTH_CHECK_TIMEOUT = 8000; // 8 second timeout (more forgiving for slow connections)
 const CONSECUTIVE_FAILURES_BEFORE_OFFLINE = 2; // Require 2 consecutive failures before marking offline
@@ -47,7 +27,7 @@ async function checkApiHealth(): Promise<boolean> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT);
     
-    const response = await fetch(`${API_URL}/health`, {
+    const response = await fetch(`${API_BASE_URL}/health`, {
       method: 'GET',
       signal: controller.signal,
     });

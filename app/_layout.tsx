@@ -150,8 +150,9 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
   const { getToken, isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
   
-  // Track the previous user ID to detect user changes
-  const previousUserIdRef = useRef<string | null>(null);
+  // `undefined` means auth has not completed its first load yet. Once loaded,
+  // `null` is a real signed-out subject and must participate in transitions.
+  const previousUserIdRef = useRef<string | null | undefined>(undefined);
   const migrationAttemptedForUserRef = useRef<string | null>(null);
   const migrationRetryCountRef = useRef<Record<string, number>>({});
   const [migrationRetryNonce, setMigrationRetryNonce] = useState(0);
@@ -181,13 +182,16 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
     const currentUserId = user?.id ?? null;
     const previousUserId = previousUserIdRef.current;
     
-    // If user changed (including sign out -> sign in as different user)
-    if (previousUserId !== null && currentUserId !== null && previousUserId !== currentUserId) {
-      console.log('User changed, clearing cached data');
+    // Skip the first resolved auth state; a new QueryClient has no prior
+    // account data. Every later subject transition (A -> signed out, signed
+    // out -> B, or A -> B) cancels requests and clears private cache data.
+    if (previousUserId !== undefined && previousUserId !== currentUserId) {
+      void queryClient.cancelQueries();
       queryClient.clear();
       addBreadcrumb('auth', 'Query cache cleared due to user change', {
-        previousUserId,
-        newUserId: currentUserId,
+        wasAuthenticated: previousUserId !== null,
+        isAuthenticated: currentUserId !== null,
+        accountChanged: previousUserId !== null && currentUserId !== null,
       });
     }
     
