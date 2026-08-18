@@ -794,7 +794,12 @@ export function usePopularTags(scope: 'user' | 'public' = 'user', enabled = true
 /**
  * Get top contributors (users with most public recipes)
  */
-export type Contributor = { user_id: string; display_name: string; recipe_count: number };
+export type Contributor = {
+  user_id: string;
+  contributor_id?: string;
+  display_name: string;
+  recipe_count: number;
+};
 
 export function useTopContributors(enabled = true) {
   return useQuery<Contributor[]>({

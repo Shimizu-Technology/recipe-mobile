@@ -449,14 +449,14 @@ class ApiClient {
     return data;
   }
 
-  async getTopContributors(limit = 8): Promise<{ user_id: string; display_name: string; recipe_count: number }[]> {
+  async getTopContributors(limit = 8): Promise<{ user_id: string; contributor_id?: string; display_name: string; recipe_count: number }[]> {
     const { data } = await this.client.get('/api/recipes/discover/contributors', {
       params: { limit },
     });
     return data;
   }
 
-  async getAllContributors(): Promise<{ user_id: string; display_name: string; recipe_count: number }[]> {
+  async getAllContributors(): Promise<{ user_id: string; contributor_id?: string; display_name: string; recipe_count: number }[]> {
     const { data } = await this.client.get('/api/recipes/discover/contributors', {
       params: { limit: 100 },
     });
@@ -479,7 +479,7 @@ class ApiClient {
       url: request.url,
       location: request.location || 'Guam',
       notes: request.notes || '',
-      is_public: request.is_public ?? true,  // Public by default
+      is_public: request.is_public ?? false,
     });
     return data;
   }
@@ -491,7 +491,7 @@ class ApiClient {
       url: request.url,
       location: request.location || 'Guam',
       notes: request.notes || '',
-      is_public: request.is_public ?? true,  // Public by default
+      is_public: request.is_public ?? false,
     });
     return data;
   }
@@ -602,7 +602,7 @@ class ApiClient {
   }): Promise<Recipe> {
     const { data } = await this.client.post('/api/recipes/from-ocr', {
       extracted: params.extracted,
-      is_public: params.is_public ?? true,
+      is_public: params.is_public ?? false,
     });
     return data;
   }

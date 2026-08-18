@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { NativeModules } from 'react-native';
 
 function normalizeConfiguredUrl(value: string): string {
   let parsed: URL;
@@ -25,8 +26,30 @@ export function resolveApiBaseUrl(): string {
     throw new Error('EXPO_PUBLIC_API_URL is required for non-development builds.');
   }
 
-  const debuggerHost = Constants.expoConfig?.hostUri || Constants.manifest?.debuggerHost;
-  const host = debuggerHost?.split(':')[0]?.trim();
+  const sourceCode = NativeModules.SourceCode as
+    | { scriptURL?: string; getConstants?: () => { scriptURL?: string } }
+    | undefined;
+  const sourceCodeUrl = sourceCode?.scriptURL || sourceCode?.getConstants?.().scriptURL;
+  const developmentHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest?.debuggerHost ||
+    Constants.experienceUrl ||
+    Constants.linkingUri ||
+    Constants.intentUri ||
+    sourceCodeUrl;
+
+  let host: string | undefined;
+  if (developmentHost) {
+    try {
+      const hostUrl = developmentHost.includes('://')
+        ? developmentHost
+        : `http://${developmentHost}`;
+      host = new URL(hostUrl).hostname;
+    } catch {
+      host = undefined;
+    }
+  }
+
   if (!host) {
     throw new Error(
       'Could not detect the local API host. Set EXPO_PUBLIC_API_URL explicitly; production fallback is disabled.'

@@ -75,6 +75,8 @@ export interface Recipe {
   has_audio_transcript: boolean;
   created_at: string;
   user_id: string | null;
+  contributor_id?: string | null;
+  is_owner?: boolean;
   extractor_display_name: string | null;
   is_public: boolean;
 }
@@ -93,6 +95,8 @@ export interface RecipeListItem {
   total_time: string | null;
   created_at: string;
   user_id: string | null;
+  contributor_id?: string | null;
+  is_owner?: boolean;
   extractor_display_name: string | null;
   is_public: boolean;
 }
@@ -128,7 +132,7 @@ export interface ExtractRequest {
   url: string;
   location?: string;
   notes?: string;
-  is_public?: boolean;  // Default true - share to library
+  is_public?: boolean;  // Defaults to private unless the user explicitly shares it
 }
 
 export interface ExtractResponse {
@@ -309,4 +313,3 @@ export interface WeekPlan {
   week_end: string;
   days: DayMeals[];
 }
-
